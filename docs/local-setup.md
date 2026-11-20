@@ -48,3 +48,32 @@ FROM (VALUES ('link-A'), ('link-B')) AS sample(link_id);
 ```
 
 Expected result: one row with `links_observed = 2`. Enter `QUIT;` to return to Ubuntu.
+
+
+## Flink Kafka connector
+
+From the project root in Ubuntu, download the connector and verify its SHA-256 checksum:
+
+```bash
+jar=flink-sql-connector-kafka-3.4.0-1.20.jar
+url="https://repo.maven.apache.org/maven2/org/apache/flink/flink-sql-connector-kafka/3.4.0-1.20/$jar"
+mkdir -p connectors &&
+curl -fsSL "$url" -o "connectors/$jar" &&
+echo "b860724fd97d7da0901bfc3859680442f4c1aa2b35ab944407558b393a1cf93e  connectors/$jar" | sha256sum -c -
+```
+
+To make the JAR available in a new SQL Client session, run from the project root:
+
+```bash
+docker run --rm -it --pull=never \
+  --mount "type=bind,source=$PWD/connectors,target=/connectors,readonly" \
+  flink:1.20.3-scala_2.12-java17 /opt/flink/bin/sql-client.sh
+```
+
+At the Flink SQL prompt:
+
+```sql
+ADD JAR '/connectors/flink-sql-connector-kafka-3.4.0-1.20.jar';
+SHOW JARS;
+```
+
