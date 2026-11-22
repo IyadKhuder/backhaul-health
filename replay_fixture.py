@@ -25,7 +25,7 @@ scoring_days = pd.read_csv(
 required_days = pd.concat(
     [
         scoring_days.assign(datetime=scoring_days["score_date"] + pd.Timedelta(days=offset))
-        for offset in (-1, 0, 1)
+        for offset in (-2, -1, 0, 1)
     ],
     ignore_index=True,
 )[keys].drop_duplicates()

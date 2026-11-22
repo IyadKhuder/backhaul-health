@@ -1,5 +1,5 @@
-mw_connection_no	score_date	observed_rows	max_error_second	prev_day_max_error_second	error_second_change_1d	outcome_date	failure_on_d1
-230,321	2019-01-01	2	0.0	0.0	0.0	2019-01-02	True
-1,338,999	2019-03-20	4	0.0	0.0	0.0	2019-03-21	False
-1,338,999	2019-03-21	4	0.0	0.0	0.0	2019-03-22	NA
-1,338,999	2019-03-24	4	0.0	NA	NA	2019-03-25	False
+mw_connection_no	score_date	observed_rows	max_error_second	prev_day_max_error_second	error_second_change_1d	days_with_kpi_3d	avg_max_error_second_3d	outcome_date	failure_on_d1
+230,321	2019-01-01	2	0.0	0.0	0.0	2	0.0	2019-01-02	True
+1,338,999	2019-03-20	4	0.0	0.0	0.0	3	0.0	2019-03-21	False
+1,338,999	2019-03-21	4	0.0	0.0	0.0	3	0.0	2019-03-22	NA
+1,338,999	2019-03-24	4	0.0	NA	NA	1	0.0	2019-03-25	False

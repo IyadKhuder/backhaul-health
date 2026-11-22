@@ -73,6 +73,26 @@ gap_example = history.loc[
 ].head(1)
 
 
+three_day_window = (
+    daily.sort_values(["mw_connection_no", "score_date"])
+    .set_index("score_date")
+    .groupby("mw_connection_no")["max_error_second"]
+    .rolling("3D", closed="right", min_periods=0)
+)
+
+three_day_features = three_day_window.agg(["count", "mean"]).rename(
+    columns={"count": "days_with_kpi_3d", "mean": "avg_max_error_second_3d"}
+)
+three_day_features["days_with_kpi_3d"] = three_day_features["days_with_kpi_3d"].astype("int64")
+
+daily = daily.merge(
+    three_day_features.reset_index(),
+    on=["mw_connection_no", "score_date"],
+    how="left",
+    validate="one_to_one",
+)
+
+
 reference = daily.loc[~daily["failure_on_d"]].copy()
 reference["outcome_date"] = reference["score_date"] + pd.Timedelta(days=1)
 
@@ -108,7 +128,7 @@ fixture_keys["score_date"] = pd.to_datetime(fixture_keys["score_date"])
 fixture_columns = [
     "mw_connection_no", "score_date", "observed_rows",
     "max_error_second", "prev_day_max_error_second", "error_second_change_1d",
-    "outcome_date", "failure_on_d1",
+        "days_with_kpi_3d", "avg_max_error_second_3d", "outcome_date", "failure_on_d1",
 ]
 fixture = fixture_keys.merge(
     reference[fixture_columns],
@@ -168,6 +188,23 @@ print(gap_example.to_string(index=False))
 
 print("\nNext-day outcomes around the March gap")
 print(gap_window.to_string(index=False))
+
+march_kpi = (
+    daily.loc[daily["mw_connection_no"].eq("1,338,999")]
+    .set_index("score_date")["max_error_second"]
+    .sort_index()
+)
+
+# At date D, (D - 3 days, D] includes D-2, D-1, and D.
+window_3d = march_kpi.rolling("3D", closed="right", min_periods=1)
+march_check = pd.DataFrame({
+    "days_with_kpi_3d": window_3d.count().astype("Int64"),
+    "avg_max_error_second_3d": window_3d.mean(),
+})
+
+check_dates = pd.to_datetime(["2019-03-20", "2019-03-21", "2019-03-24", "2019-03-25"])
+print("\nThree-day KPI check for 1,338,999")
+print(march_check.loc[check_dates].to_string())
 
 print("\nReplay fixture")
 print(f"Saved {len(fixture)} scoring rows to {fixture_path}")
