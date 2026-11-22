@@ -17,7 +17,10 @@ expected = pd.read_csv(
     "fixtures/daily_reference.tsv",
     sep="\t",
     dtype={column: str for column in keys},
-).set_index(keys, verify_integrity=True)
+).set_index(keys)
+
+if not expected.index.is_unique:
+    raise ValueError("Duplicate connection and score date in the pandas fixture")
 
 partition = TopicPartition("backhaul-link-features", 0)
 consumer = KafkaConsumer(
