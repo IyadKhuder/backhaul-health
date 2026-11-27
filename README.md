@@ -41,6 +41,27 @@ The backtest will compare a recent-error engineering ranking with logistic regre
 
 The comparison will report how many recorded failures each queue captures, how many inspections have clear outcomes, and how many outcomes are unknown. The planned Elasticsearch and Kibana demo will show the queue as it stood at the end of D and reveal the recorded outcomes when the replay reaches D+1.
 
+### M5 chronological backtest
+
+The model was fitted on known outcomes dated in 2019 and evaluated on the
+partial-year 2020 holdout (1 January–26 December outcomes; 361 scoring dates).
+At up to 10 inspections per day, both methods ranked the full eligible pool,
+including candidates whose next-day outcome was unknown. Precision and recall
+use only candidates with known outcomes; unknown selected outcomes are reported
+separately.
+
+| Method | Selected | Known inspected | Failures captured | False alarms | Unknown outcomes | Missed failures | Precision | Recall | Average precision |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Recent-error baseline (`max_error_second`) | 3,610 | 3,525 | 4 | 3,521 | 85 | 385 | 0.1135% | 1.0283% | 0.001082 |
+| Logistic regression | 3,610 | 3,528 | 4 | 3,524 | 82 | 385 | 0.1134% | 1.0283% | 0.000881 |
+
+The recent-error baseline had higher average precision in this holdout, while
+both methods captured the same four failures at the 10-per-day budget. The
+results do not show a useful improvement from logistic regression. Failures
+were rare among known outcomes (389 of 464,461, or about 0.084%), and unknown
+outcomes among selected candidates were not counted as either hits or false
+alarms.
+
 ## Repository guide
 
 | File | Purpose |

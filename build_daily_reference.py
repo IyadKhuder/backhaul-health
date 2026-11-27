@@ -206,5 +206,186 @@ check_dates = pd.to_datetime(["2019-03-20", "2019-03-21", "2019-03-24", "2019-03
 print("\nThree-day KPI check for 1,338,999")
 print(march_check.loc[check_dates].to_string())
 
+# Training outcomes in calendar year 2019 map to these scoring dates.
+# Filter by score_date so eligible rows with an unknown D+1 outcome remain included.
+training_score_dates = pd.date_range("2018-12-31", "2019-12-30", freq="D")
+
+training_pool = reference.loc[
+    reference["score_date"].between(
+        training_score_dates[0], training_score_dates[-1]
+    )
+]
+
+daily_eligible = (
+    training_pool.groupby("score_date")["mw_connection_no"]
+    .nunique()
+    .reindex(training_score_dates, fill_value=0)
+)
+
+print("\nM5 · Checkpoint 1 — Training inspection pool")
+print(f"Scoring dates: {len(daily_eligible)}")
+print(f"Minimum eligible links per day: {daily_eligible.min()}")
+print(f"Median eligible links per day: {daily_eligible.median():g}")
+print(f"Maximum eligible links per day: {daily_eligible.max()}")
+print(f"Days with fewer than 10 eligible links: {daily_eligible.lt(10).sum()}")
+
+print("\nM5 · Checkpoint 2 — Reference fields")
+for column in reference.columns:
+    print(
+        f"{column}: {reference[column].dtype}, "
+        f"non-missing={reference[column].notna().sum()}, "
+        f"missing={reference[column].isna().sum()}"
+    )
+
+print("\nM5 · Checkpoint 3 — Outcome coverage by year")
+for year in sorted(reference["outcome_date"].dt.year.unique()):
+    year_target = reference.loc[
+        reference["outcome_date"].dt.year.eq(year), "failure_on_d1"
+    ]
+
+    print(
+        f"{year}: rows={len(year_target)}, "
+        f"known={year_target.notna().sum()}, "
+        f"failures={year_target.eq(True).sum()}, "
+        f"non-failures={year_target.eq(False).sum()}, "
+        f"unknown={year_target.isna().sum()}"
+    )
+
+print("\nM5 · Checkpoint 4 — Chronological split coverage")
+for year in (2019, 2020):
+    split = reference.loc[reference["outcome_date"].dt.year.eq(year)]
+
+    print(
+        f"Outcome year {year}: "
+        f"outcome dates {split['outcome_date'].min().date()} to "
+        f"{split['outcome_date'].max().date()} "
+        f"({split['outcome_date'].nunique()} distinct); "
+        f"scoring dates {split['score_date'].min().date()} to "
+        f"{split['score_date'].max().date()} "
+        f"({split['score_date'].nunique()} distinct); "
+        f"unknown labels={split['failure_on_d1'].isna().sum()}"
+    )
+
+backtest_features = [
+    "max_error_second",
+    "prev_day_max_error_second",
+    "error_second_change_1d",
+    "days_with_kpi_3d",
+    "avg_max_error_second_3d",
+]
+
+training_rows = reference.loc[
+    reference["outcome_date"].dt.year.eq(2019)
+    & reference["failure_on_d1"].notna()
+].copy()
+
+test_pool = reference.loc[
+    reference["outcome_date"].dt.year.eq(2020)
+].copy()
+
+test_known = test_pool.loc[test_pool["failure_on_d1"].notna()]
+
+print("\nM5 · Checkpoint 5 — Backtest rows and feature coverage")
+print(
+    f"Training: rows={len(training_rows)}, "
+    f"failures={training_rows['failure_on_d1'].eq(True).sum()}, "
+    f"scoring dates={training_rows['score_date'].nunique()}"
+)
+print(
+    f"2020 test pool: candidates={len(test_pool)}, "
+    f"known outcomes={len(test_known)}, "
+    f"failures={test_known['failure_on_d1'].eq(True).sum()}, "
+    f"unknown outcomes={test_pool['failure_on_d1'].isna().sum()}, "
+    f"scoring dates={test_pool['score_date'].nunique()}"
+)
+
+for column in backtest_features:
+    print(
+        f"{column}: training missing={training_rows[column].isna().sum()}, "
+        f"test missing={test_pool[column].isna().sum()}"
+    )
+
+from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+
+model = make_pipeline(
+    SimpleImputer(strategy="median", add_indicator=True),
+    StandardScaler(),
+    LogisticRegression(max_iter=1000),
+)
+
+model.fit(
+    training_rows[backtest_features],
+    training_rows["failure_on_d1"].astype("int8"),
+)
+
+test_scored = test_pool.copy()
+test_scored["logistic_score"] = model.predict_proba(
+    test_pool[backtest_features]
+)[:, 1]
+
+print("\nM5 · Checkpoint 6 — Logistic regression scoring")
+print(f"Training rows fitted: {len(training_rows)}")
+print(f"Training failures: {training_rows['failure_on_d1'].eq(True).sum()}")
+print(f"2020 candidates scored: {len(test_scored)}")
+print(f"Unknown outcomes retained in scoring pool: {test_scored['failure_on_d1'].isna().sum()}")
+print(f"All logistic scores are present: {test_scored['logistic_score'].notna().all()}")
+print(
+    "Logistic score range: "
+    f"{test_scored['logistic_score'].min():.6f} to "
+    f"{test_scored['logistic_score'].max():.6f}"
+)
+
+from sklearn.metrics import average_precision_score
+
+inspection_budget = 10
+known_test = test_scored.loc[test_scored["failure_on_d1"].notna()]
+total_known_failures = known_test["failure_on_d1"].eq(True).sum()
+
+def select_daily_top_k(frame, score_column, k):
+    return (
+        frame.sort_values(
+            ["score_date", score_column, "mw_connection_no"],
+            ascending=[True, False, True],
+        )
+        .groupby("score_date", sort=True)
+        .head(k)
+    )
+
+print("\nM5 · Checkpoint 7 — 2020 ranking comparison")
+print(
+    f"Inspection budget: up to {inspection_budget} per day; "
+    f"scoring dates={test_scored['score_date'].nunique()}"
+)
+print(f"Known eligible failures for recall denominator: {total_known_failures}")
+
+for method, score_column in [
+    ("Recent-error baseline", "max_error_second"),
+    ("Logistic regression", "logistic_score"),
+]:
+    selected = select_daily_top_k(test_scored, score_column, inspection_budget)
+    known_selected = selected.loc[selected["failure_on_d1"].notna()]
+
+    hits = known_selected["failure_on_d1"].eq(True).sum()
+    false_alarms = known_selected["failure_on_d1"].eq(False).sum()
+    unknown = selected["failure_on_d1"].isna().sum()
+    precision = hits / len(known_selected) if len(known_selected) else 0
+    recall = hits / total_known_failures
+
+    average_precision = average_precision_score(
+        known_test["failure_on_d1"].astype("int8"),
+        known_test[score_column],
+    )
+
+    print(
+        f"{method}: selected={len(selected)}, "
+        f"known inspected={len(known_selected)}, "
+        f"failures captured={hits}, false alarms={false_alarms}, "
+        f"unknown outcomes={unknown}, precision={precision:.4%}, "
+        f"recall={recall:.4%}, average precision={average_precision:.6f}"
+    )
+
 print("\nReplay fixture")
 print(f"Saved {len(fixture)} scoring rows to {fixture_path}")
